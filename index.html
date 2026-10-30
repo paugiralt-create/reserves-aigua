@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="ca">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Estadístiques de les Reserves d'Aigua als Embassaments de Catalunya</title>
+    <!-- Llibreria oficial per dibuixar els gràfics de línies -->
+    <script src="https://jsdelivr.net"></script>
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; max-width: 1100px; margin: 0 auto; padding: 25px; background-color: #f0f4f8; color: #333; }
+        h1 { color: #1e3a8a; border-bottom: 3px solid #2563eb; padding-bottom: 10px; margin-bottom: 5px; }
+        h2 { color: #1e40af; margin-top: 40px; font-size: 1.5em; }
+        .fonts { font-size: 0.9em; margin-bottom: 30px; color: #627d98; background: #e4e9f0; padding: 10px 15px; border-radius: 6px; }
+        .fonts a { color: #2563eb; text-decoration: none; font-weight: bold; }
+        .fonts a:hover { text-decoration: underline; }
+        table { width: 100%; border-collapse: collapse; margin-top: 15px; background: white; border-radius: 8px; overflow: hidden; box-shadow: 0 4px 6px rgba(0,0,0,0.05); }
+        th, td { padding: 14px 18px; text-align: left; border-bottom: 1px solid #e2e8f0; }
+        th { background-color: #2563eb; color: white; font-weight: 600; text-transform: uppercase; font-size: 0.85em; letter-spacing: 0.5px; }
+        tr:hover { background-color: #f8fafc; }
+        .container-panta { background: white; padding: 20px; margin: 25px 0; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); border-left: 5px solid #2563eb; }
+        .container-panta h3 { margin-top: 0; color: #0f172a; font-size: 1.2em; }
+        .canvas-container { width: 100%; height: 260px; position: relative; }
+        .carregant { text-align: center; padding: 40px; font-size: 1.2em; color: #627d98; font-weight: 500; }
+    </style>
+</head>
+<body>
+
+    <h1>Estat Històric dels Embassaments de Catalunya</h1>
+    
+    <div class="fonts">
+        <p><strong>Fonts d'informació oficials vinculades:</strong> 
+            <a href="https://gencat.cat" target="_blank">Web de l'Agència Catalana de l'Aigua (ACA)</a> | 
+            <a href="https://gencat.cat" target="_blank">Portal de Dades Obertes de la Generalitat de Catalunya</a>
+        </p>
+    </div>
+
+    <h2>Dades actualitzades d'avui</h2>
+    <table id="taula-embassaments">
+        <thead>
+            <tr>
+                <th>Embassament</th>
+                <th>Volum Actual (hm³)</th>
+                <th>Capacitat Total Aprox. (hm³)</th>
+                <th>Percentatge de Reserves (%)</th>
+            </tr>
+        </thead>
+        <tbody id="cos-taula">
+            <tr>
+                <td colspan="4" class="carregant">Descarregant i processant les dades de l'ACA en temps real...</td>
+            </tr>
+        </tbody>
+    </table>
+
+    <h2>Gràfics de Tendència (Històric evolutiu)</h2>
+    <div id="zona-grafics">
+        <p class="carregant">Generant els gràfics interactius de cada pantà...</p>
+    </div>
+
+    <script>
+        // URL oficial directa de l'API de Dades Obertes (sense intermediaris)
+        const API_URL = "https://transparenciacatalunya.cat DESC";
+
+        async function carregarDades() {
+            try {
+                const resposta = await fetch(API_URL);
+                if (!resposta.ok) throw new Error("Error en la xarxa");
+                const dades = await resposta.json();
+                
+                // Executar els dos components del web de manera neta
+                tractarTaulaActual(dades);
+                tractarGraficsHistorics(dades);
+                
+            } catch (error) {
+                console.error("Error detallat:", error);
+                document.getElementById("cos-taula").innerHTML = `<tr><td colspan="4" style="color:red; text-align:center; padding:20px;">No s'han pogut carregar les dades de l'API. Si us plau, torna a carregar el web.</td></tr>`;
+            }
+        }
+
+        function tractarTaulaActual(dades) {
+            const tbody = document.getElementById("cos-taula");
+            tbody.innerHTML = ""; 
+            
+            const pantansVistos = new Set();
+            
+            dades.forEach(registre => {
+                const nom = registre.estaci;
+                if (!pantansVistos.has(nom) && registre.volum_embassat && registre.percentatge_volum_embassat) {
+                    pantansVistos.add(nom);
+                    
+                    const volum = parseFloat(registre.volum_embassat).toFixed(2);
+                    const percentatge = parseFloat(registre.percentatge_volum_embassat).toFixed(1);
+                    
+                    let capacitat = (volum / (percentatge / 100)).toFixed(2);
+                    if (parseFloat(percentatge) === 0 || isNaN(capacitat)) capacitat = "N/D";
+
+                    const fila = `<tr>
+                        <td><strong>${nom}</strong></td>
+                        <td>${volum} hm³</td>
+                        <td>${capacitat === "N/D" ? "N/D" : capacitat + " hm³"}</td>
+                        <td style="font-weight: bold; color: ${percentatge < 25 ? '#dc2626' : '#16a34a'}">${percentatge}%</td>
+                    </tr>`;
+                    tbody.innerHTML += fila;
+                }
+            });
+        }
+
+        function tractarGraficsHistorics(dades) {
+            const zonaGrafics = document.getElementById("zona-grafics");
+            zonaGrafics.innerHTML = ""; 
+
+            const dadesPerPanta = {};
+            
+            dades.slice().reverse().forEach(registre => {
+                const panta = registre.estaci;
+                if (panta && registre.data_determinacio && registre.percentatge_volum_embassat) {
+                    if (!dadesPerPanta[panta]) {
+                        dadesPerPanta[panta] = { dates: [], valors: [] };
+                    }
+                    const dataFormatada = registre.data_determinacio.substring(0, 10);
+                    dadesPerPanta[panta].dates.push(dataFormatada);
+                    dadesPerPanta[panta].valors.push(parseFloat(registre.percentatge_volum_embassat));
+                }
+            });
+
+            Object.keys(dadesPerPanta).forEach(nomPanta => {
+                const dadesPanta = dadesPerPanta[nomPanta];
+                const idNet = nomPanta.normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-zA-Z0-9]/g, "-");
+
+                const divPanta = document.createElement("div");
+                divPanta.className = "container-panta";
+                divPanta.innerHTML = `<h3>Embassament de: ${nomPanta}</h3><div class="canvas-container"><canvas id="chart-${idNet}"></canvas></div>`;
+                zonaGrafics.appendChild(divPanta);
+
+                const ctx = document.getElementById(`chart-${idNet}`).getContext('2d');
+                new Chart(ctx, {
+                    type: 'line',
+                    data: {
+                        labels: dadesPanta.dates,
+                        datasets: [{
+                            label: '% de reserves d\'aigua',
+                            data: dadesPanta.valors,
+                            borderColor: '#2563eb',
+                            backgroundColor: 'rgba(37, 99, 235, 0.06)',
+                            fill: true,
+                            tension: 0.1,
+                            pointRadius: 0, 
+                            borderWidth: 2
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            legend: { display: false } 
+                        },
+                        scales: {
+                            y: { min: 0, max: 100, ticks: { callback: function(value) { return value + '%'; } } },
+                            x: { ticks: { maxTicksLimit: 8 } } 
+                        }
+                    }
+                });
+            });
+        }
+
+        carregarDades();
+    </script>
+</body>
+</html>
+
